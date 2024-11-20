@@ -1,58 +1,97 @@
 
-// SPDX-License-Identifier: SEE LICENSE IN LICENSE
-pragma solidity ^0.8.9;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
 
 contract crowdFund{
-    struct Campaign {
-        address owner;
-        string title;
-        string description;
-        uint256 target;
-        uint256 deadline;
-        uint256 amountCollected;
-        string image;
-        address[] donators;
-        uint256[] donations;
-    }
-    mapping (uint256  => Campaign) public campagings;
+    string public Campaign_name;
+    string public Description;
+    uint256 public goal;
+    uint256 public deadLine;
+    address public owner;
 
-    uint256 public numberofCamp = 0;
-   //use memoty for string type parameter
-    function createCampaign(address _owner ,string memory _title, string memory _description , uint256 _target,uint256 _deadline,string memory _image) public return (uint256) {
-        Campaign storage campaign = campaigns[numberofCamp]
-    //contract  //store in //variable name  
-     require(campaign.deadline < block.timestamp, "The deadline should be at future ");
-       campaign.owner = _owner;
-       campaign.title = _title;
-       campaign.description = _description;
-       campaign.target = _target;
-       campaign.deadline = _deadline;
-       campaign.amountCollected = 0;
-       campaign.image = _image ;
+    enum campaign_state {active,successful,failed} //enum - multi value states
+    campaign_state public states;
 
-       numberOfCamp++;
-
-       return numberOfCamp - 1;
+    modifier  campaignState(){
+        require(states == campaign_state.active,"Campaign state");
+        _;
     }
 
-     function donateCampaign (uint256 _id) public payable  {
-         uint256 amount = msg.value
+    struct Tier { //like a type or sub contract
+         string name;
+         uint256 amount;
+         uint256 backers;
+    }
 
-         Campaign storage campaign = campaigns[_id] //array of _id
+    struct backersWallet {
+        uint256 totalContribution;
+        mapping(uint256 => bool) fundedTier; //hey if backer fund uint256 if true => bool value
+    }
 
-         campaign.donators.push(msg.sender);
-         campaign.donations.push(amount);
+    mapping (address => backersWallet) public backers;
 
-         (bool sent,) = payable(campaign.owner).call{value:amount}("");
+    Tier[] public tiers; //array nammed tiers
 
-         if(sent){
-            campaign.amountCollected = campaign.amountCollected + amount;
-         }
-                                     
-     }
+    modifier onlyOwner() {
+       require(msg.sender == owner,"Only the owner can withdraw");
+       _; //run remainder of function if they met requirement
+    }
 
-     function getDonators(uint256) view public returns (address[] memory,uint256[] memory) {
-        return (campagings[_id].donators,campaigns[_id].donations)
-     }
     
+    constructor(string memory _name,string memory _description,uint256 _goal,uint256 _durationDays)
+    {
+           Campaign_name = _name;
+           Description = _description;
+           goal = _goal;
+           deadLine = block.timestamp + (_durationDays * 1 days);
+           owner = msg.sender;
+           states = campaign_state.active;
+     }
+
+     function checkAndUpdateContracts() internal { //INTERNAL - only visible to class
+        if(states == campaign_state.active){
+               if(block.timestamp >= deadLine){
+                    states = address(this).balance >= goal ? campaign_state.successful :  campaign_state.failed;
+               }
+            else {
+                states = address(this).balance >= goal ? campaign_state.successful : campaign_state.active;
+            }
+        }
+     }
+
+   function addFunds(uint256 _tierIndex) public payable campaignState(){ //adds funds
+      //need to met to execute
+          require(block.timestamp < deadLine, "The campaign has ended, your've late");
+          require(_tierIndex < tiers.length,"Invalid Tier");
+          require(msg.value == tiers[_tierIndex].amount,"amount Required not met");
+          tiers[_tierIndex].backers++;
+           backers[msg.sender].totalContribution += msg.value;
+          checkAndUpdateContracts();
+   }
+
+   function withdraw() public onlyOwner  {
+        require(msg.sender == owner,"Only the owner can withdraw");
+        require(address(this).balance >= goal,"Goal has not been reached");
+
+        uint256 balance = address(this).balance;
+        require(balance > 0,"Cant withdraw ");
+        payable(owner).transfer(balance);
+   }
+
+   function getContractBalance() public view returns (uint256)  { //readonly - view
+         return address(this).balance; 
+   }
+
+   function addTier(string memory _nameTier,uint256 _amount) public onlyOwner{
+         require(_amount > 0,"amount must be greater than 0");
+         tiers.push(Tier(_nameTier,_amount,0));
+   }
+ //view = readOnly
+ function removeTier(uint256 _index ) public onlyOwner{
+    require(_index < tiers.length,"Tier does not exist");
+    tiers[_index] = tiers[tiers.length - 1];
+    tiers.pop();
+ }
+
 }
