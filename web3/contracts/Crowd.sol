@@ -29,7 +29,7 @@ contract crowdFund{
         mapping(uint256 => bool) fundedTier; //hey if backer fund uint256 if true => bool value
     }
 
-    mapping (address => backersWallet) public backers;
+    mapping (address => backersWallet) public backers;     //adds backersWallet to address
 
     Tier[] public tiers; //array nammed tiers
 
@@ -67,6 +67,7 @@ contract crowdFund{
           require(msg.value == tiers[_tierIndex].amount,"amount Required not met");
           tiers[_tierIndex].backers++;
            backers[msg.sender].totalContribution += msg.value;
+           backers[msg.sender].fundedTier[_tierIndex] = true;
           checkAndUpdateContracts();
    }
 
@@ -92,6 +93,19 @@ contract crowdFund{
     require(_index < tiers.length,"Tier does not exist");
     tiers[_index] = tiers[tiers.length - 1];
     tiers.pop();
+ }
+
+ function refund() public{
+    checkAndUpdateContracts();
+    require(states == campaign_state.failed,"The refund was not available");
+    uint256 amount = backers[msg.sender].totalContribution;
+    require(amount > 0,"No contribution refunds");
+    backers[msg.sender].totalContribution = 0;
+    payable(msg.sender).transfer(amount);
+ }
+
+ function hasFunded(address _backer,uint256 _tierIndex) public view returns (bool) {
+    return backers[_backer].fundedTier[_tierIndex];
  }
 
 }
